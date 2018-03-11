@@ -26,8 +26,7 @@ import           Database.Persist.TH         (mkMigrate, mkPersist,
 import           Helpers                     (Action, TypedAction, runDB)
 
 import           Network.HTTP.Types.Status   (created201)
-import           Web.Scotty.Trans            (delete, get, json, jsonData,
-                                              notFound, post, put, status)
+import           Web.Scotty.Trans            (json, jsonData, status)
 
 share
   [mkMigrate "migrateRecipe", mkPersist sqlSettings]
@@ -86,10 +85,9 @@ postRecipesA = do
   let ingredientRows = ingredientRowsFromNew newRecipe time
   ingredientRowIds <- mapM insertIngredientRow ingredientRows
   let recipe = recipeFromNew newRecipe ingredientRowIds time
-  insertRecipe recipe
+  _ <- insertRecipe recipe
   status created201
   json (newRecipe :: NewRecipe)
-
 
 -- Convert Api Models to DB Models
 recipeFromNew :: NewRecipe -> [(DB.Key IngredientRow)] -> UTCTime -> Recipe

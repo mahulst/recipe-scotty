@@ -8,7 +8,7 @@ module Api where
 import           Control.Monad.IO.Class               (liftIO)
 import           Control.Monad.Logger                 (runNoLoggingT,
                                                        runStdoutLoggingT)
-import           Control.Monad.Reader                 (ReaderT, runReaderT)
+import           Control.Monad.Reader                 (runReaderT)
 import           Data.Aeson                           (Value (Null), object,
                                                        (.=))
 import           Data.Default                         (def)
@@ -18,11 +18,8 @@ import qualified Database.Persist                     as DB
 import qualified Database.Persist.Postgresql          as DB
 import           Helpers                              (Action, Config (..),
                                                        ConfigM (..),
-                                                       Environment (..), Error,
-                                                       runDB)
-import           Models                               (Task, TaskId, migrateAll)
-import           Network.HTTP.Types.Status            (created201,
-                                                       internalServerError500,
+                                                       Environment (..), Error)
+import           Network.HTTP.Types.Status            (internalServerError500,
                                                        notFound404)
 import           Network.Wai                          (Middleware)
 import           Network.Wai.Handler.Warp             (Settings,
@@ -30,17 +27,14 @@ import           Network.Wai.Handler.Warp             (Settings,
                                                        setFdCacheDuration,
                                                        setPort)
 import           Network.Wai.Middleware.RequestLogger (logStdout, logStdoutDev)
-import           Recipe                               (migrateRecipe,
-                                                       postRecipesA)
+import           Recipe                               (postRecipesA)
 import           System.Environment                   (lookupEnv)
 import           Web.Scotty.Trans                     (Options, ScottyT,
-                                                       defaultHandler, delete,
-                                                       get, json, jsonData,
+                                                       defaultHandler, json,
                                                        middleware, notFound,
-                                                       param, post, put,
-                                                       scottyOptsT, settings,
-                                                       showError, status,
-                                                       verbose)
+                                                       post, scottyOptsT,
+                                                       settings, showError,
+                                                       status, verbose)
 
 migrateThing :: DB.Migration -> IO ()
 migrateThing thing = do
@@ -50,11 +44,7 @@ migrateThing thing = do
 startServer :: IO ()
 startServer = do
   c <- getConfig
-  migrateSchema c
   runApplication c
-
-migrateSchema :: Config -> IO ()
-migrateSchema c = liftIO $ flip DB.runSqlPersistMPool (pool c) $ DB.runMigration migrateAll
 
 getConfig :: IO Config
 getConfig = do
@@ -152,12 +142,7 @@ application c = do
   let e = environment c
   middleware (loggingM e)
   defaultHandler (defaultH e)
-  get "/tasks" getTasksA
-  post "/tasks" postTasksA
   post "/recipes" postRecipesA
-  get "/tasks/:id" getTaskA
-  put "/tasks/:id" putTaskA
-  delete "/tasks/:id" deleteTaskA
   notFound notFoundA
 
 loggingM :: Environment -> Middleware
@@ -174,39 +159,6 @@ defaultH e x = do
           Production  -> Null
           Test        -> object ["error" .= showError x]
   json o
-
-getTasksA :: Action
-getTasksA = do
-  ts <- runDB (DB.selectList [] [])
-  json (ts :: [DB.Entity Task])
-
-postTasksA :: Action
-postTasksA = do
-  t <- jsonData
-  runDB (DB.insert_ t)
-  status created201
-  json (t :: Task)
-
-getTaskA :: Action
-getTaskA = do
-  i <- param "id"
-  m <- runDB (DB.get (toKey i))
-  case m of
-    Nothing -> notFoundA
-    Just t  -> json (t :: Task)
-
-putTaskA :: Action
-putTaskA = do
-  i <- param "id"
-  t <- jsonData
-  runDB (DB.repsert (toKey i) t)
-  json (t :: Task)
-
-deleteTaskA :: Action
-deleteTaskA = do
-  i <- param "id"
-  runDB (DB.delete (toKey i :: TaskId))
-  json Null
 
 toKey :: DB.ToBackendKey DB.SqlBackend a => Integer -> DB.Key a
 toKey i = DB.toSqlKey (fromIntegral (i :: Integer))
