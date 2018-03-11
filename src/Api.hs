@@ -27,14 +27,16 @@ import           Network.Wai.Handler.Warp             (Settings,
                                                        setFdCacheDuration,
                                                        setPort)
 import           Network.Wai.Middleware.RequestLogger (logStdout, logStdoutDev)
-import           Recipe                               (postRecipesA)
+import           Recipe                               (getRecipesA,
+                                                       postRecipesA)
 import           System.Environment                   (lookupEnv)
 import           Web.Scotty.Trans                     (Options, ScottyT,
-                                                       defaultHandler, json,
-                                                       middleware, notFound,
-                                                       post, scottyOptsT,
-                                                       settings, showError,
-                                                       status, verbose)
+                                                       defaultHandler, get,
+                                                       json, middleware,
+                                                       notFound, post,
+                                                       scottyOptsT, settings,
+                                                       showError, status,
+                                                       verbose)
 
 migrateThing :: DB.Migration -> IO ()
 migrateThing thing = do
@@ -143,6 +145,7 @@ application c = do
   middleware (loggingM e)
   defaultHandler (defaultH e)
   post "/recipes" postRecipesA
+  get "/recipes" getRecipesA
   notFound notFoundA
 
 loggingM :: Environment -> Middleware

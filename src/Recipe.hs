@@ -10,19 +10,18 @@
 
 module Recipe where
 
-import           Data.Aeson                  (FromJSON, ToJSON)
-import           GHC.Generics
-
 import           Control.Monad.IO.Class      (liftIO)
-import qualified Database.Persist            as DB
-import qualified Database.Persist.Postgresql as DB
-
+import           Data.Aeson                  (FromJSON, ToJSON)
+import           Data.List                   (concatMap)
 import           Data.Text                   (Text)
 import           Data.Time.Clock             (UTCTime)
 import           Data.Time.Clock.POSIX       (getCurrentTime)
+import qualified Database.Persist            as DB
+import qualified Database.Persist.Postgresql as DB
 import           Database.Persist.TH         (mkMigrate, mkPersist,
                                               persistLowerCase, share,
                                               sqlSettings)
+import           GHC.Generics
 import           Helpers                     (Action, TypedAction, runDB)
 
 import           Network.HTTP.Types.Status   (created201)
@@ -41,12 +40,14 @@ IngredientRow json
   unit Text
   ingredient IngredientId
   created UTCTime Maybe default=now()
+  deriving Show
 
 Recipe json
   name Text
   description Text
   ingredients [IngredientRowId]
   created UTCTime Maybe default=now()
+  deriving Show
 |]
 
 -- Models for API response of a new recipe
@@ -108,3 +109,20 @@ ingredientRowsFromNew newRecipe time =
              in IngredientRow rowAmount rowUnit rowIngredient (Just time))
           newIngredientRows
   in ingredientRows
+
+getRecipesA :: Action
+getRecipesA = do
+  rs <- runDB (DB.selectList [] [DB.LimitTo 10])
+  let rowIds = concatMap (\recipe -> (recipeIngredients (DB.entityVal recipe))) rs
+  rows <- runDB (DB.selectList [IngredientRowId DB.<-. rowIds] [])
+  let ingredientIds = fmap (\row -> (ingredientRowIngredient (DB.entityVal row))) rows
+  ingredients <- runDB (DB.selectList [IngredientId DB.<-. ingredientIds] [])
+  json (RecipeWithIngredients rs rows ingredients)
+
+data RecipeWithIngredients = RecipeWithIngredients
+  { recipes        :: [DB.Entity Recipe]
+  , ingredientRows :: [DB.Entity IngredientRow]
+  , ingredients    :: [DB.Entity Ingredient]
+  } deriving (Generic, Show)
+
+instance ToJSON RecipeWithIngredients

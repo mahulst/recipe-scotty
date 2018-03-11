@@ -2,13 +2,12 @@
 
 module Helpers where
 
+import           Control.Monad.IO.Class      (MonadIO, liftIO)
+import           Control.Monad.Reader        (MonadReader, ReaderT, asks)
 import           Control.Monad.Trans.Class   (MonadTrans, lift)
 import           Data.Text.Lazy              (Text)
 import qualified Database.Persist.Postgresql as DB
 import           Web.Scotty.Trans            (ActionT)
-
-import           Control.Monad.IO.Class      (MonadIO, liftIO)
-import           Control.Monad.Reader        (MonadReader, ReaderT, asks)
 
 data Environment
   = Development
