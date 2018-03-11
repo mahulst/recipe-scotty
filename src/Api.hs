@@ -15,6 +15,7 @@ import Data.Text.Lazy (Text)
 import qualified Database.Persist as DB
 import qualified Database.Persist.Postgresql as DB
 import Models (Task, TaskId, migrateAll)
+import Recipe (migrateRecipe, postRecipesA)
 import Network.HTTP.Types.Status (created201, internalServerError500,
   notFound404)
 import Network.Wai (Middleware)
@@ -25,6 +26,12 @@ import System.Environment (lookupEnv)
 import Web.Scotty.Trans (ActionT, Options, ScottyT, defaultHandler, delete,
   get, json, jsonData, middleware, notFound, param, post, put, scottyOptsT,
   settings, showError, status, verbose)
+import Helpers (Action, ConfigM(..), Config(..), Error, Environment(..), runDB)
+
+migrateThing :: DB.Migration -> IO ()
+migrateThing thing = do
+  c <- getConfig
+  liftIO $ flip DB.runSqlPersistMPool (pool c) $ DB.runMigration thing
 
 
 startServer :: IO ()
@@ -47,11 +54,6 @@ getConfig = do
     , pool = p
     }
 
-data Config = Config
-  { environment :: Environment
-  , pool :: DB.ConnectionPool
-  }
-
 getEnvironment :: IO Environment
 getEnvironment = do
   m <- lookupEnv "SCOTTY_ENV"
@@ -59,13 +61,6 @@ getEnvironment = do
         Nothing -> Development
         Just s -> read s
   return e
-
-data Environment
-  = Development
-  | Production
-  | Test
-  deriving (Eq, Read, Show)
-
 
 getPool :: Environment -> IO DB.ConnectionPool
 getPool e = do
@@ -111,11 +106,6 @@ runApplication c = do
       app = application c
   scottyOptsT o r app
 
-newtype ConfigM a = ConfigM
- { runConfigM :: ReaderT Config IO a
- } deriving (Applicative, Functor, Monad, MonadIO, MonadReader Config)
-
-
 getOptions :: Environment -> IO Options
 getOptions e = do
   s <- getSettings e
@@ -150,7 +140,6 @@ getPort = do
         Just s -> Just (read s)
   return p
 
-type Error = Text
 
 application :: Config -> ScottyT Error ConfigM ()
 application c = do
@@ -162,6 +151,7 @@ application c = do
 
   get "/tasks" getTasksA
   post "/tasks" postTasksA
+  post "/recipes" postRecipesA
   get "/tasks/:id" getTaskA
   put "/tasks/:id" putTaskA
   delete "/tasks/:id" deleteTaskA
@@ -169,19 +159,12 @@ application c = do
   notFound notFoundA
 
 
-runDB :: (MonadTrans t, MonadIO (t ConfigM)) =>
-  DB.SqlPersistT IO a -> t ConfigM a
-runDB q = do
-  p <- lift (asks pool)
-  liftIO (DB.runSqlPool q p)
-
 
 loggingM :: Environment -> Middleware
 loggingM Development = logStdoutDev
 loggingM Production = logStdout
 loggingM Test = id
 
-type Action = ActionT Error ConfigM ()
 
 
 defaultH :: Environment -> Error -> Action
