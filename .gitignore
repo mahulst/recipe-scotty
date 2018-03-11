@@ -2,3 +2,5 @@
 recipe.cabal
 *~
 .idea
+.importify
+recipe.iml
