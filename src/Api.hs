@@ -18,9 +18,13 @@ import qualified Database.Persist                     as DB
 import qualified Database.Persist.Postgresql          as DB
 import           Helpers                              (Action, Config (..),
                                                        ConfigM (..),
-                                                       Environment (..), Error)
-import           Network.HTTP.Types.Status            (internalServerError500,
-                                                       notFound404)
+                                                       Environment (..), Error,
+                                                       notFoundA)
+import           List                                 (addRecipeToListA,
+                                                       migrateList,
+                                                       postNewListA,
+                                                       showAllListsA)
+import           Network.HTTP.Types.Status            (internalServerError500)
 import           Network.Wai                          (Middleware)
 import           Network.Wai.Handler.Warp             (Settings,
                                                        defaultSettings,
@@ -28,6 +32,8 @@ import           Network.Wai.Handler.Warp             (Settings,
                                                        setPort)
 import           Network.Wai.Middleware.RequestLogger (logStdout, logStdoutDev)
 import           Recipe                               (getRecipesA,
+                                                       migrateRecipe,
+                                                       postIngredientA,
                                                        postRecipesA)
 import           System.Environment                   (lookupEnv)
 import           Web.Scotty.Trans                     (Options, ScottyT,
@@ -45,6 +51,8 @@ migrateThing thing = do
 
 startServer :: IO ()
 startServer = do
+  _ <- migrateThing migrateRecipe
+  _ <- migrateThing migrateList
   c <- getConfig
   runApplication c
 
@@ -73,22 +81,12 @@ getPool e = do
     Test        -> runNoLoggingT (DB.createPostgresqlPool s n)
 
 getConnectionString :: Environment -> IO DB.ConnectionString
-getConnectionString e = do
-  m <- lookupEnv "DATABASE_URL"
-  let s =
-        case m of
-          _ -> getDefaultConnectionString e
-  return s
+getConnectionString e = return (getDefaultConnectionString e)
 
 getDefaultConnectionString :: Environment -> DB.ConnectionString
 getDefaultConnectionString Development = "host=localhost port=5432 user=postgres dbname=recipe_development"
 getDefaultConnectionString Production = "host=localhost port=5432 user=postgres dbname=recipe_production"
 getDefaultConnectionString Test = "host=localhost port=5432 user=postgres dbname=recipe_test"
-
-createConnectionString :: [(T.Text, T.Text)] -> DB.ConnectionString
-createConnectionString l =
-  let f (k, v) = T.concat [k, "=", v]
-  in encodeUtf8 (T.unwords (map f l))
 
 getConnectionSize :: Environment -> Int
 getConnectionSize Development = 1
@@ -144,7 +142,11 @@ application c = do
   let e = environment c
   middleware (loggingM e)
   defaultHandler (defaultH e)
+  get "/list/add/:list/:recipe" addRecipeToListA
+  get "/lists" showAllListsA
+  post "/new-list" postNewListA
   post "/recipes" postRecipesA
+  post "/ingredient" postIngredientA
   get "/recipes" getRecipesA
   notFound notFoundA
 
@@ -165,8 +167,3 @@ defaultH e x = do
 
 toKey :: DB.ToBackendKey DB.SqlBackend a => Integer -> DB.Key a
 toKey i = DB.toSqlKey (fromIntegral (i :: Integer))
-
-notFoundA :: Action
-notFoundA = do
-  status notFound404
-  json Null

@@ -72,6 +72,9 @@ instance ToJSON NewRecipe
 instance FromJSON NewRecipe
 
 -- DB Tasks
+insertIngredient :: Ingredient -> TypedAction (DB.Key Ingredient)
+insertIngredient ingredient = runDB (DB.insert ingredient)
+
 insertIngredientRow :: IngredientRow -> TypedAction (DB.Key IngredientRow)
 insertIngredientRow row = runDB (DB.insert row)
 
@@ -90,22 +93,31 @@ postRecipesA = do
   status created201
   json (newRecipe :: NewRecipe)
 
+postIngredientA :: Action
+postIngredientA = do
+  ingredient <- jsonData
+  time <- liftIO getCurrentTime
+  let newIngredient = ingredient {ingredientCreated = Just time}
+  _ <- insertIngredient newIngredient
+  status created201
+  json (newIngredient :: Ingredient)
+
 -- Convert Api Models to DB Models
-recipeFromNew :: NewRecipe -> [(DB.Key IngredientRow)] -> UTCTime -> Recipe
+recipeFromNew :: NewRecipe -> [DB.Key IngredientRow] -> UTCTime -> Recipe
 recipeFromNew newRecipe rows time =
-  let name = (newRecipeName newRecipe)
-      description = (newRecipeName newRecipe)
+  let name = newRecipeName newRecipe
+      description = newRecipeName newRecipe
   in Recipe name description rows (Just time)
 
 ingredientRowsFromNew :: NewRecipe -> UTCTime -> [IngredientRow]
 ingredientRowsFromNew newRecipe time =
-  let newIngredientRows = (newRecipeIngredientsRow newRecipe)
+  let newIngredientRows = newRecipeIngredientsRow newRecipe
       ingredientRows =
         fmap
           (\i ->
-             let rowAmount = (newIngredientRowAmount i)
-                 rowUnit = (newIngredientRowUnit i)
-                 rowIngredient = (newIngredientRowIngredient i)
+             let rowAmount = newIngredientRowAmount i
+                 rowUnit = newIngredientRowUnit i
+                 rowIngredient = newIngredientRowIngredient i
              in IngredientRow rowAmount rowUnit rowIngredient (Just time))
           newIngredientRows
   in ingredientRows
@@ -113,9 +125,9 @@ ingredientRowsFromNew newRecipe time =
 getRecipesA :: Action
 getRecipesA = do
   rs <- runDB (DB.selectList [] [DB.LimitTo 10])
-  let rowIds = concatMap (\recipe -> (recipeIngredients (DB.entityVal recipe))) rs
+  let rowIds = concatMap (\recipe -> recipeIngredients (DB.entityVal recipe)) rs
   rows <- runDB (DB.selectList [IngredientRowId DB.<-. rowIds] [])
-  let ingredientIds = fmap (\row -> (ingredientRowIngredient (DB.entityVal row))) rows
+  let ingredientIds = fmap (\row -> ingredientRowIngredient (DB.entityVal row)) rows
   ingredients <- runDB (DB.selectList [IngredientId DB.<-. ingredientIds] [])
   json (RecipeWithIngredients rs rows ingredients)
 
