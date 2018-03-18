@@ -23,7 +23,7 @@ import           Helpers                              (Action, Config (..),
 import           List                                 (addRecipeToListA,
                                                        migrateList,
                                                        postNewListA,
-                                                       showAllListsA)
+                                                       showAllListsA, getListA)
 import           Network.HTTP.Types.Status            (internalServerError500)
 import           Network.Wai                          (Middleware)
 import           Network.Wai.Handler.Warp             (Settings,
@@ -148,6 +148,7 @@ application c = do
   post "/recipes" postRecipesA
   post "/ingredient" postIngredientA
   get "/recipes" getRecipesA
+  get "/list/:id" getListA
   notFound notFoundA
 
 loggingM :: Environment -> Middleware
